@@ -503,7 +503,7 @@ fn main() -> Result<(), Error> {
         .write_style(env_logger::WriteStyle::Never)
         .format_module_path(false)
         .format_timestamp(None)
-        .filter_level(log::LevelFilter::Info)
+        .filter_level(log::LevelFilter::Debug) // TODO: revert to Info
         .target(env_logger::Target::Stdout)
         .init();
 
