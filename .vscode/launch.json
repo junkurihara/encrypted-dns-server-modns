@@ -1,0 +1,50 @@
+{
+  // Use IntelliSense to learn about possible attributes.
+  // Hover to view descriptions of existing attributes.
+  // For more information, visit: https://go.microsoft.com/fwlink/?linkid=830387
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "type": "lldb",
+      "request": "launch",
+      "name": "Debug executable 'encrypted-dns'",
+      "cargo": {
+        "args": [
+          "build",
+          "--bin=encrypted-dns",
+          "--package=encrypted-dns"
+        ],
+        "filter": {
+          "name": "encrypted-dns",
+          "kind": "bin"
+        }
+      },
+      "env": {
+        "RUST_LOG": "debug"
+      },
+      "args": [
+        "--config=encrypted-dns.toml"
+      ],
+      "cwd": "${workspaceFolder}/.private"
+    },
+    {
+      "type": "lldb",
+      "request": "launch",
+      "name": "Debug unit tests in executable 'encrypted-dns'",
+      "cargo": {
+        "args": [
+          "test",
+          "--no-run",
+          "--bin=encrypted-dns",
+          "--package=encrypted-dns"
+        ],
+        "filter": {
+          "name": "encrypted-dns",
+          "kind": "bin"
+        }
+      },
+      "args": [],
+      "cwd": "${workspaceFolder}"
+    }
+  ]
+}

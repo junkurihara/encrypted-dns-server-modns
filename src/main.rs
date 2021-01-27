@@ -176,6 +176,19 @@ async fn handle_client_query(
         && encrypted_packet[..ANONYMIZED_DNSCRYPT_QUERY_MAGIC.len()]
             == ANONYMIZED_DNSCRYPT_QUERY_MAGIC
     {
+        //////////
+        // TODO: remove
+        let client_ip = match &client_ctx {
+            ClientCtx::Udp(u) => u.client_addr,
+            ClientCtx::Tcp(t) => t.client_connection.peer_addr()?,
+        }
+        .ip();
+        debug!(
+            "Anonymized DNS packet -> \npacket size: {:?}\nclient addr: {:?}",
+            original_packet_size, client_ip
+        );
+        // TODO: remove
+        //////////
         return handle_anonymized_dns(
             globals,
             client_ctx,

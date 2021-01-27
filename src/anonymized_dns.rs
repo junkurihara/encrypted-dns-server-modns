@@ -73,11 +73,19 @@ pub async fn handle_anonymized_dns(
         "Protocol confusion with QUIC"
     );
     debug_assert!(DNSCRYPT_UDP_QUERY_MIN_SIZE > ANONYMIZED_DNSCRYPT_QUERY_MAGIC.len());
-    ensure!(
-        encrypted_packet[..ANONYMIZED_DNSCRYPT_QUERY_MAGIC.len()]
-            != ANONYMIZED_DNSCRYPT_QUERY_MAGIC,
-        "Loop detected"
-    );
+    /////////////////////////////
+    // TODO: 安全のためにはここのループ判定の条件を難しくしないとダメ。一応コメントアウトで対処。
+    // TODO: このとき、最大ホップ数とかで落としてあげるのが優しいと思われる。
+    // TODO: ループディテクションはないとたしかに厳しいので、一旦バラしてどうの、というのを考えるほうが良さそう。
+    // TODO: 本当はプロキシの方でもちゃんとやるほうが良いと思われる。
+    let trailing_relays_num = count_trailing_relays(&encrypted_packet);
+    debug!("num of trailing relays: {}", trailing_relays_num);
+    // ensure!(
+    //     encrypted_packet[..ANONYMIZED_DNSCRYPT_QUERY_MAGIC.len()]
+    //         != ANONYMIZED_DNSCRYPT_QUERY_MAGIC,
+    //     "Loop detected"
+    // );
+    /////////////////////////////
     let ext_socket = match globals.external_addr {
         Some(x) => UdpSocket::bind(x).await?,
         None => match upstream_address {
@@ -113,9 +121,14 @@ pub async fn handle_anonymized_dns(
     };
     response.truncate(response_len);
     if is_certificate_response {
+        debug!("certificate response {:?}", response);
+        // TODO: キャッシュがうまくできていない
+        // 以下で落ちてるっぽい。
         let mut hasher = globals.hasher;
-        hasher.write(&relayed_packet[..ANONYMIZED_DNSCRYPT_OVERHEAD]);
-        hasher.write(&dns::qname(&encrypted_packet)?);
+        let offset = (ANONYMIZED_DNSCRYPT_OVERHEAD + ANONYMIZED_DNSCRYPT_QUERY_MAGIC.len())
+            * (trailing_relays_num as usize);
+        hasher.write(&relayed_packet[offset..(offset + ANONYMIZED_DNSCRYPT_OVERHEAD)]); // target DNS server addr and port
+        hasher.write(&dns::qname(&encrypted_packet[offset..])?); // target DNS server qname
         let packet_hash = hasher.finish128().as_u128();
         let cached_response = {
             match globals.cert_cache.lock().get(&packet_hash) {
@@ -132,6 +145,7 @@ pub async fn handle_anonymized_dns(
                 }
             }
         };
+        debug!("if going well, this message is displayed {:?}", response);
         match cached_response {
             None => {
                 globals.cert_cache.lock().insert(
@@ -145,7 +159,6 @@ pub async fn handle_anonymized_dns(
 
     #[cfg(feature = "metrics")]
     globals.varz.anonymized_responses.inc();
-
     respond_to_query(client_ctx, response).await
 }
 
@@ -155,18 +168,72 @@ fn is_encrypted_response(response: &[u8], response_len: usize) -> bool {
         && response[..DNSCRYPT_RESPONSE_MAGIC_SIZE] == DNSCRYPT_RESPONSE_MAGIC
 }
 
+fn count_trailing_relays(query: &[u8]) -> u8 {
+    let magic_len = ANONYMIZED_DNSCRYPT_QUERY_MAGIC.len();
+    let mut cnt = 0;
+    let mut raw_query_offset = 0;
+
+    loop {
+        if query[raw_query_offset..].len() < magic_len + ANONYMIZED_DNSCRYPT_OVERHEAD {
+            break;
+        }
+        let next_header = &query[raw_query_offset..(raw_query_offset + magic_len)];
+        if next_header == ANONYMIZED_DNSCRYPT_QUERY_MAGIC {
+            cnt += 1;
+            raw_query_offset += magic_len + ANONYMIZED_DNSCRYPT_OVERHEAD;
+        } else {
+            break;
+        }
+    }
+    cnt
+}
+
 fn is_certificate_response(response: &[u8], query: &[u8]) -> bool {
     let prefix = b"2.dnscrypt-cert.";
-    if !((DNS_HEADER_SIZE + prefix.len() + 4..=DNS_MAX_PACKET_SIZE).contains(&query.len())
+    /////////////
+    // TODO: 以下デバッグメモ
+    // TODO: queryと比較するときちゃんと次のリレー分のヘッダも外して検証してあげないといけないよ！！！！！！！！！
+    // TODO: TODO:TODO: TODO:TODO: TODO:TODO: TODO:TODO: TODO:TODO: TODO:
+    // TODO: 再帰にする
+    // TODO: 多分うまくレスポンス返せていない
+    let magic_len = ANONYMIZED_DNSCRYPT_QUERY_MAGIC.len();
+    let mut raw_query_offset = 0;
+    // check length first
+    if query.len() > magic_len + ANONYMIZED_DNSCRYPT_OVERHEAD {
+        let next_header = &query[..magic_len];
+        let next_ip_port = &query[magic_len..(magic_len + ANONYMIZED_DNSCRYPT_OVERHEAD)];
+        debug!("next header? {:?}", next_header);
+        debug!("next ip and port? {:?}", next_ip_port);
+        if next_header == ANONYMIZED_DNSCRYPT_QUERY_MAGIC {
+            debug!("multi hop relayed cert query");
+            raw_query_offset += magic_len + ANONYMIZED_DNSCRYPT_OVERHEAD;
+        }
+    }
+
+    // debug!("{:?}, {:?}", response.len(), query.len());
+    // debug!("{:?}", dns::is_response(response));
+    // debug!("{:?}", !dns::is_response(query)); // ここがたまにfalseになる。このときは必ずtid(query)がクソでかい。
+    // debug!("{:?}, {:?}", dns::tid(response), dns::tid(query));
+    // debug!(
+    //     "{:?}",
+    //     (DNS_HEADER_SIZE + prefix.len() + 4..=DNS_MAX_PACKET_SIZE).contains(&response.len())
+    // );
+    // debug!(
+    //     "{:?}",
+    //     (DNS_HEADER_SIZE + prefix.len() + 4..=DNS_MAX_PACKET_SIZE).contains(&query.len())
+    // );
+    /////////////
+    if !((DNS_HEADER_SIZE + prefix.len() + 4..=DNS_MAX_PACKET_SIZE)
+        .contains(&query[raw_query_offset..].len())
         && (DNS_HEADER_SIZE + prefix.len() + 4..=DNS_MAX_PACKET_SIZE).contains(&response.len())
-        && dns::tid(response) == dns::tid(query)
+        && dns::tid(response) == dns::tid(&query[raw_query_offset..])
         && dns::is_response(response)
-        && !dns::is_response(query))
+        && !dns::is_response(&query[raw_query_offset..]))
     {
         debug!("Unexpected relayed cert response");
         return false;
     }
-    let qname = match (dns::qname(query), dns::qname(response)) {
+    let qname = match (dns::qname(&query[raw_query_offset..]), dns::qname(response)) {
         (Ok(response_qname), Ok(query_qname)) if response_qname == query_qname => query_qname,
         _ => {
             debug!("Relayed cert qname response didn't match the query qname");
