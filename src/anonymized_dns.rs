@@ -14,8 +14,17 @@ pub const ANONYMIZED_DNSCRYPT_QUERY_MAGIC: [u8; 10] =
 
 pub const ANONYMIZED_DNSCRYPT_OVERHEAD: usize = 16 + 2;
 
+pub const ANONYMIZED_DNSCRYPT_HEADER_LEN: usize =
+    ANONYMIZED_DNSCRYPT_QUERY_MAGIC.len() + ANONYMIZED_DNSCRYPT_OVERHEAD;
+
 pub const RELAYED_CERT_CACHE_SIZE: usize = 1000;
 pub const RELAYED_CERT_CACHE_TTL: u32 = 600;
+
+#[derive(Debug)]
+pub struct TrailingNode<'a> {
+    pub ip_bin: &'a [u8],
+    pub port_bin: &'a [u8],
+}
 
 pub async fn handle_anonymized_dns(
     globals: Arc<Globals>,
@@ -78,8 +87,12 @@ pub async fn handle_anonymized_dns(
     // TODO: このとき、最大ホップ数とかで落としてあげるのが優しいと思われる。
     // TODO: ループディテクションはないとたしかに厳しいので、一旦バラしてどうの、というのを考えるほうが良さそう。
     // TODO: 本当はプロキシの方でもちゃんとやるほうが良いと思われる。
-    let trailing_relays_num = count_trailing_relays(&encrypted_packet);
-    debug!("num of trailing relays: {}", trailing_relays_num);
+    let trailing_nodes = parse_trailing_nodes(&encrypted_packet);
+    debug!(
+        "[FORK!] trailing nodes (incl. final target) after this node ({}): {:?}",
+        trailing_nodes.len(),
+        trailing_nodes
+    );
     // ensure!(
     //     encrypted_packet[..ANONYMIZED_DNSCRYPT_QUERY_MAGIC.len()]
     //         != ANONYMIZED_DNSCRYPT_QUERY_MAGIC,
@@ -115,18 +128,14 @@ pub async fn handle_anonymized_dns(
         if is_encrypted_response(&response, response_len) {
             break (response_len, false);
         }
-        if is_certificate_response(&response, &encrypted_packet) {
+        if is_certificate_response(&response, &encrypted_packet, &trailing_nodes) {
             break (response_len, true);
         }
     };
     response.truncate(response_len);
     if is_certificate_response {
-        debug!("certificate response {:?}", response);
-        // TODO: キャッシュがうまくできていない
-        // 以下で落ちてるっぽい。
         let mut hasher = globals.hasher;
-        let offset = (ANONYMIZED_DNSCRYPT_OVERHEAD + ANONYMIZED_DNSCRYPT_QUERY_MAGIC.len())
-            * (trailing_relays_num as usize);
+        let offset = ANONYMIZED_DNSCRYPT_HEADER_LEN * trailing_nodes.len();
         hasher.write(&relayed_packet[offset..(offset + ANONYMIZED_DNSCRYPT_OVERHEAD)]); // target DNS server addr and port
         hasher.write(&dns::qname(&encrypted_packet[offset..])?); // target DNS server qname
         let packet_hash = hasher.finish128().as_u128();
@@ -145,7 +154,6 @@ pub async fn handle_anonymized_dns(
                 }
             }
         };
-        debug!("if going well, this message is displayed {:?}", response);
         match cached_response {
             None => {
                 globals.cert_cache.lock().insert(
@@ -168,9 +176,10 @@ fn is_encrypted_response(response: &[u8], response_len: usize) -> bool {
         && response[..DNSCRYPT_RESPONSE_MAGIC_SIZE] == DNSCRYPT_RESPONSE_MAGIC
 }
 
-fn count_trailing_relays(query: &[u8]) -> u8 {
+// parse trailing nodes that includes the target dns server if multiple relays used
+fn parse_trailing_nodes(query: &[u8]) -> Vec<TrailingNode> {
+    let mut nodes = vec![];
     let magic_len = ANONYMIZED_DNSCRYPT_QUERY_MAGIC.len();
-    let mut cnt = 0;
     let mut raw_query_offset = 0;
 
     loop {
@@ -179,50 +188,41 @@ fn count_trailing_relays(query: &[u8]) -> u8 {
         }
         let next_header = &query[raw_query_offset..(raw_query_offset + magic_len)];
         if next_header == ANONYMIZED_DNSCRYPT_QUERY_MAGIC {
-            cnt += 1;
+            let next_node = TrailingNode {
+                ip_bin: &query[(raw_query_offset + magic_len)..(raw_query_offset + magic_len + 16)],
+                port_bin: &query
+                    [(raw_query_offset + magic_len + 16)..(raw_query_offset + magic_len + 18)],
+            };
+            nodes.push(next_node);
             raw_query_offset += magic_len + ANONYMIZED_DNSCRYPT_OVERHEAD;
         } else {
             break;
         }
     }
-    cnt
+
+    nodes
 }
 
-fn is_certificate_response(response: &[u8], query: &[u8]) -> bool {
+fn is_certificate_response(
+    response: &[u8],
+    query: &[u8],
+    trailing_nodes: &Vec<TrailingNode>,
+) -> bool {
     let prefix = b"2.dnscrypt-cert.";
-    /////////////
-    // TODO: 以下デバッグメモ
-    // TODO: queryと比較するときちゃんと次のリレー分のヘッダも外して検証してあげないといけないよ！！！！！！！！！
-    // TODO: TODO:TODO: TODO:TODO: TODO:TODO: TODO:TODO: TODO:TODO: TODO:
-    // TODO: 再帰にする
-    // TODO: 多分うまくレスポンス返せていない
-    let magic_len = ANONYMIZED_DNSCRYPT_QUERY_MAGIC.len();
     let mut raw_query_offset = 0;
-    // check length first
-    if query.len() > magic_len + ANONYMIZED_DNSCRYPT_OVERHEAD {
-        let next_header = &query[..magic_len];
-        let next_ip_port = &query[magic_len..(magic_len + ANONYMIZED_DNSCRYPT_OVERHEAD)];
-        debug!("next header? {:?}", next_header);
-        debug!("next ip and port? {:?}", next_ip_port);
-        if next_header == ANONYMIZED_DNSCRYPT_QUERY_MAGIC {
-            debug!("multi hop relayed cert query");
-            raw_query_offset += magic_len + ANONYMIZED_DNSCRYPT_OVERHEAD;
+    //////
+    // In case where multiple hop nodes exist after this relay.
+    if trailing_nodes.len() > 0 {
+        if query.len() > trailing_nodes.len() * ANONYMIZED_DNSCRYPT_HEADER_LEN {
+            raw_query_offset += trailing_nodes.len() * ANONYMIZED_DNSCRYPT_HEADER_LEN;
+            debug!("[FORK!] multi hop relayed cert query");
+        } else {
+            debug!("[FORK!] Unexpected size of query for multihop relays");
+            return false;
         }
     }
+    //////
 
-    // debug!("{:?}, {:?}", response.len(), query.len());
-    // debug!("{:?}", dns::is_response(response));
-    // debug!("{:?}", !dns::is_response(query)); // ここがたまにfalseになる。このときは必ずtid(query)がクソでかい。
-    // debug!("{:?}, {:?}", dns::tid(response), dns::tid(query));
-    // debug!(
-    //     "{:?}",
-    //     (DNS_HEADER_SIZE + prefix.len() + 4..=DNS_MAX_PACKET_SIZE).contains(&response.len())
-    // );
-    // debug!(
-    //     "{:?}",
-    //     (DNS_HEADER_SIZE + prefix.len() + 4..=DNS_MAX_PACKET_SIZE).contains(&query.len())
-    // );
-    /////////////
     if !((DNS_HEADER_SIZE + prefix.len() + 4..=DNS_MAX_PACKET_SIZE)
         .contains(&query[raw_query_offset..].len())
         && (DNS_HEADER_SIZE + prefix.len() + 4..=DNS_MAX_PACKET_SIZE).contains(&response.len())
