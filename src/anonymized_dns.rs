@@ -88,9 +88,9 @@ pub async fn handle_anonymized_dns(
     // TODO: ループディテクションはないとたしかに厳しいので、一旦バラしてどうの、というのを考えるほうが良さそう。
     // TODO: 本当はプロキシの方でもちゃんとやるほうが良いと思われる。
     let trailing_nodes = parse_trailing_nodes(&encrypted_packet);
+    debug!("[FORK!] upstream node: {:?}", upstream_address);
     debug!(
-        "[FORK!] trailing nodes (incl. final target) after this node ({}): {:?}",
-        trailing_nodes.len(),
+        "[FORK!] trailing nodes (incl. final target):\n{:?}",
         trailing_nodes
     );
     // ensure!(
@@ -226,10 +226,23 @@ fn is_certificate_response(
     if !((DNS_HEADER_SIZE + prefix.len() + 4..=DNS_MAX_PACKET_SIZE)
         .contains(&query[raw_query_offset..].len())
         && (DNS_HEADER_SIZE + prefix.len() + 4..=DNS_MAX_PACKET_SIZE).contains(&response.len())
-        && dns::tid(response) == dns::tid(&query[raw_query_offset..])
+        && (
+            // TODO: workaround: does this work? -> certificate response could be fragmented.... this should be fixed.
+            dns::tid(response) == dns::tid(&query[raw_query_offset..])
+                || dns::tid(response) == 65535
+        )
         && dns::is_response(response)
         && !dns::is_response(&query[raw_query_offset..]))
     {
+        /////////////////////
+        debug!("Cert response: {:?}", response);
+        debug!("Cert query: {:?}", &query[raw_query_offset..]);
+        debug!("Cert response TxID: {:?}", dns::tid(response));
+        debug!(
+            "Cert query TxID: {:?}",
+            dns::tid(&query[raw_query_offset..])
+        );
+        /////////////////////
         debug!("Unexpected relayed cert response");
         return false;
     }
