@@ -145,7 +145,7 @@ pub async fn handle_anonymized_dns(
                 Some(response) if !(*response).has_expired() => {
                     trace!("Relayed certificate cached");
                     let mut cached_response = (*response).clone();
-                    cached_response.set_tid(dns::tid(encrypted_packet));
+                    cached_response.set_tid(dns::tid(&encrypted_packet[offset..]));
                     Some(cached_response.into_response())
                 }
                 Some(_) => {
@@ -222,15 +222,23 @@ fn is_certificate_response(
         }
     }
     //////
-
+    // check
+    if dns::tid(response) == 65535 {
+        debug!("[FORK!] dns response TxID is 65535: {:X?}", response);
+        debug!(
+            "[FORK!] corresponding dns query TxID is {:?}",
+            dns::tid(&query[raw_query_offset..])
+        );
+    }
+    //////
     if !((DNS_HEADER_SIZE + prefix.len() + 4..=DNS_MAX_PACKET_SIZE)
         .contains(&query[raw_query_offset..].len())
         && (DNS_HEADER_SIZE + prefix.len() + 4..=DNS_MAX_PACKET_SIZE).contains(&response.len())
-        && (
+        && //(
             // TODO: workaround: does this work? -> certificate response could be fragmented.... this should be fixed.
             dns::tid(response) == dns::tid(&query[raw_query_offset..])
-                || dns::tid(response) == 65535
-        )
+                //|| dns::tid(response) == 65535
+        //)
         && dns::is_response(response)
         && !dns::is_response(&query[raw_query_offset..]))
     {
