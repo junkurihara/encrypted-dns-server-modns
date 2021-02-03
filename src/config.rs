@@ -20,6 +20,7 @@ pub struct AnonymizedDNSConfig {
     pub allowed_ports: Vec<u16>,
     pub allow_non_reserved_ports: Option<bool>,
     pub blacklisted_ips: Vec<IpAddr>,
+    pub max_subsequent_relays: usize,
 }
 
 #[cfg(feature = "metrics")]

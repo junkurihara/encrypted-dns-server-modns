@@ -21,9 +21,41 @@ pub const RELAYED_CERT_CACHE_SIZE: usize = 1000;
 pub const RELAYED_CERT_CACHE_TTL: u32 = 600;
 
 #[derive(Debug)]
-pub struct TrailingNode<'a> {
-    pub ip_bin: &'a [u8],
-    pub port_bin: &'a [u8],
+struct Node<'a> {
+    ip_bin: &'a [u8],
+    port_bin: &'a [u8],
+}
+
+impl<'a> Node<'a> {
+    pub fn new(bin: &[u8]) -> Node {
+        Node {
+            ip_bin: &bin[..16],
+            port_bin: &bin[16..18],
+        }
+    }
+
+    pub fn ip(&self) -> std::net::IpAddr {
+        let ip_v6 = Ipv6Addr::new(
+            BigEndian::read_u16(&self.ip_bin[0..2]),
+            BigEndian::read_u16(&self.ip_bin[2..4]),
+            BigEndian::read_u16(&self.ip_bin[4..6]),
+            BigEndian::read_u16(&self.ip_bin[6..8]),
+            BigEndian::read_u16(&self.ip_bin[8..10]),
+            BigEndian::read_u16(&self.ip_bin[10..12]),
+            BigEndian::read_u16(&self.ip_bin[12..14]),
+            BigEndian::read_u16(&self.ip_bin[14..16]),
+        );
+        let ip = match ip_v6.to_ipv4() {
+            Some(ip_v4) => IpAddr::V4(ip_v4),
+            None => IpAddr::V6(ip_v6),
+        };
+        ip
+    }
+
+    pub fn port(&self) -> u16 {
+        let port = BigEndian::read_u16(&self.port_bin);
+        port
+    }
 }
 
 pub async fn handle_anonymized_dns(
@@ -35,36 +67,24 @@ pub async fn handle_anonymized_dns(
         relayed_packet.len() > ANONYMIZED_DNSCRYPT_OVERHEAD,
         "Short packet"
     );
-    let ip_bin = &relayed_packet[..16];
-    let ip_v6 = Ipv6Addr::new(
-        BigEndian::read_u16(&ip_bin[0..2]),
-        BigEndian::read_u16(&ip_bin[2..4]),
-        BigEndian::read_u16(&ip_bin[4..6]),
-        BigEndian::read_u16(&ip_bin[6..8]),
-        BigEndian::read_u16(&ip_bin[8..10]),
-        BigEndian::read_u16(&ip_bin[10..12]),
-        BigEndian::read_u16(&ip_bin[12..14]),
-        BigEndian::read_u16(&ip_bin[14..16]),
-    );
-    let ip = match ip_v6.to_ipv4() {
-        Some(ip_v4) => IpAddr::V4(ip_v4),
-        None => IpAddr::V6(ip_v6),
-    };
+    let nexthop_node = Node::new(&relayed_packet[..18]);
+    let nexthop_ip = nexthop_node.ip();
+    let nexthop_port = nexthop_node.port();
+
     #[cfg(feature = "metrics")]
     globals.varz.anonymized_queries.inc();
 
-    ensure!(IpExt::is_global(&ip), "Forbidden upstream address");
+    ensure!(IpExt::is_global(&nexthop_ip), "Forbidden upstream address");
     ensure!(
-        !globals.anonymized_dns_blacklisted_ips.contains(&ip),
+        !globals.anonymized_dns_blacklisted_ips.contains(&nexthop_ip),
         "Blacklisted upstream IP"
     );
-    let port = BigEndian::read_u16(&relayed_packet[16..18]);
     ensure!(
-        (globals.anonymized_dns_allow_non_reserved_ports && port >= 1024)
-            || globals.anonymized_dns_allowed_ports.contains(&port),
+        (globals.anonymized_dns_allow_non_reserved_ports && nexthop_port >= 1024)
+            || globals.anonymized_dns_allowed_ports.contains(&nexthop_port),
         "Forbidden upstream port"
     );
-    let upstream_address = SocketAddr::new(ip, port);
+    let upstream_address = SocketAddr::new(nexthop_ip, nexthop_port);
     ensure!(
         !globals.listen_addrs.contains(&upstream_address)
             && globals.external_addr != Some(upstream_address),
@@ -83,22 +103,31 @@ pub async fn handle_anonymized_dns(
     );
     debug_assert!(DNSCRYPT_UDP_QUERY_MIN_SIZE > ANONYMIZED_DNSCRYPT_QUERY_MAGIC.len());
     /////////////////////////////
-    // TODO: 安全のためにはここのループ判定の条件を難しくしないとダメ。一応コメントアウトで対処。
-    // TODO: このとき、最大ホップ数とかで落としてあげるのが優しいと思われる。
-    // TODO: ループディテクションはないとたしかに厳しいので、一旦バラしてどうの、というのを考えるほうが良さそう。
-    // TODO: 本当はプロキシの方でもちゃんとやるほうが良いと思われる。
-    let trailing_nodes = parse_trailing_nodes(&encrypted_packet);
-    debug!("[FORK!] upstream node: {:?}", upstream_address);
-    debug!(
-        "[FORK!] trailing nodes (incl. final target):\n{:?}",
-        trailing_nodes
-    );
     // ensure!(
     //     encrypted_packet[..ANONYMIZED_DNSCRYPT_QUERY_MAGIC.len()]
     //         != ANONYMIZED_DNSCRYPT_QUERY_MAGIC,
     //     "Loop detected"
     // );
+    // TODO: 安全のためにはここのループ判定の条件を難しくしないとダメ。一応コメントアウトで対処。
+    // TODO: このとき、最大ホップ数とかで落としてあげるのが優しいと思われる。
+    // TODO: ループディテクションはないとたしかに厳しいので、一旦バラしてどうの、というのを考えるほうが良さそう。
+    // TODO: 本当はプロキシの方でもちゃんとやるほうが良いと思われる。
+    //
+    // including final target = DNS server
+    let subsequent_nodes = parse_subsequent_nodes(&encrypted_packet)?;
+    // for debug
+    let mut trail: Vec<std::string::String> = (&subsequent_nodes)
+        .into_iter()
+        .map(|x| format!("{:?}:{:?}", x.ip(), x.port()))
+        .collect();
+    trail.insert(0, format!("{:?}:{:?}", nexthop_ip, nexthop_port));
+    debug!("[FORK!] trail after this node: {:?}", trail);
+    ensure!(
+        !(subsequent_nodes.len() > globals.anonymized_dns_max_subsequent_relays),
+        "Exceeds the maximum allowed number of subsequent relays"
+    );
     /////////////////////////////
+
     let ext_socket = match globals.external_addr {
         Some(x) => UdpSocket::bind(x).await?,
         None => match upstream_address {
@@ -128,14 +157,14 @@ pub async fn handle_anonymized_dns(
         if is_encrypted_response(&response, response_len) {
             break (response_len, false);
         }
-        if is_certificate_response(&response, &encrypted_packet, &trailing_nodes) {
+        if is_certificate_response(&response, &encrypted_packet, &subsequent_nodes) {
             break (response_len, true);
         }
     };
     response.truncate(response_len);
     if is_certificate_response {
         let mut hasher = globals.hasher;
-        let offset = ANONYMIZED_DNSCRYPT_HEADER_LEN * trailing_nodes.len();
+        let offset = ANONYMIZED_DNSCRYPT_HEADER_LEN * subsequent_nodes.len();
         hasher.write(&relayed_packet[offset..(offset + ANONYMIZED_DNSCRYPT_OVERHEAD)]); // target DNS server addr and port
         hasher.write(&dns::qname(&encrypted_packet[offset..])?); // target DNS server qname
         let packet_hash = hasher.finish128().as_u128();
@@ -176,23 +205,20 @@ fn is_encrypted_response(response: &[u8], response_len: usize) -> bool {
         && response[..DNSCRYPT_RESPONSE_MAGIC_SIZE] == DNSCRYPT_RESPONSE_MAGIC
 }
 
-// parse trailing nodes that includes the target dns server if multiple relays used
-fn parse_trailing_nodes(query: &[u8]) -> Vec<TrailingNode> {
+// parse subsequent nodes that includes the target dns server if multiple relays used
+fn parse_subsequent_nodes(query: &[u8]) -> Result<Vec<Node>, Error> {
     let mut nodes = vec![];
     let magic_len = ANONYMIZED_DNSCRYPT_QUERY_MAGIC.len();
     let mut raw_query_offset = 0;
 
     loop {
-        if query[raw_query_offset..].len() < magic_len + ANONYMIZED_DNSCRYPT_OVERHEAD {
-            break;
-        }
+        ensure!(
+            !(query[raw_query_offset..].len() < magic_len + ANONYMIZED_DNSCRYPT_OVERHEAD),
+            "Invalid header for anonymized DNS"
+        );
         let next_header = &query[raw_query_offset..(raw_query_offset + magic_len)];
         if next_header == ANONYMIZED_DNSCRYPT_QUERY_MAGIC {
-            let next_node = TrailingNode {
-                ip_bin: &query[(raw_query_offset + magic_len)..(raw_query_offset + magic_len + 16)],
-                port_bin: &query
-                    [(raw_query_offset + magic_len + 16)..(raw_query_offset + magic_len + 18)],
-            };
+            let next_node = Node::new(&query[(raw_query_offset + magic_len)..]);
             nodes.push(next_node);
             raw_query_offset += magic_len + ANONYMIZED_DNSCRYPT_OVERHEAD;
         } else {
@@ -200,24 +226,19 @@ fn parse_trailing_nodes(query: &[u8]) -> Vec<TrailingNode> {
         }
     }
 
-    nodes
+    Ok(nodes)
 }
 
-fn is_certificate_response(
-    response: &[u8],
-    query: &[u8],
-    trailing_nodes: &Vec<TrailingNode>,
-) -> bool {
+fn is_certificate_response(response: &[u8], query: &[u8], subsequent_nodes: &Vec<Node>) -> bool {
     let prefix = b"2.dnscrypt-cert.";
     let mut raw_query_offset = 0;
     //////
     // In case where multiple hop nodes exist after this relay.
-    if trailing_nodes.len() > 0 {
-        if query.len() > trailing_nodes.len() * ANONYMIZED_DNSCRYPT_HEADER_LEN {
-            raw_query_offset += trailing_nodes.len() * ANONYMIZED_DNSCRYPT_HEADER_LEN;
-            debug!("[FORK!] multi hop relayed cert query");
+    if subsequent_nodes.len() > 0 {
+        if query.len() > subsequent_nodes.len() * ANONYMIZED_DNSCRYPT_HEADER_LEN {
+            raw_query_offset += subsequent_nodes.len() * ANONYMIZED_DNSCRYPT_HEADER_LEN;
         } else {
-            debug!("[FORK!] Unexpected size of query for multihop relays");
+            error!("[FORK!] Unexpected size of query for multihop relays");
             return false;
         }
     }
@@ -230,15 +251,15 @@ fn is_certificate_response(
         && !dns::is_response(&query[raw_query_offset..]))
     {
         /////////////////////
-        debug!("Cert response: {:?}", response);
-        debug!("Cert query: {:?}", &query[raw_query_offset..]);
-        debug!("Cert response TxID: {:?}", dns::tid(response));
-        debug!(
-            "Cert query TxID: {:?}",
-            dns::tid(&query[raw_query_offset..])
-        );
+        // debug!("Cert response: {:?}", response);
+        // debug!("Cert query: {:?}", &query[raw_query_offset..]);
+        // debug!("Cert response TxID: {:?}", dns::tid(response));
+        // debug!(
+        //     "Cert query TxID: {:?}",
+        //     dns::tid(&query[raw_query_offset..])
+        // );
         /////////////////////
-        debug!("Unexpected relayed cert response");
+        error!("Unexpected relayed cert response");
         return false;
     }
     let qname = match (dns::qname(&query[raw_query_offset..]), dns::qname(response)) {

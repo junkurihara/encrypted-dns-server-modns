@@ -19,6 +19,8 @@ extern crate serde_big_array;
 #[cfg(feature = "metrics")]
 #[macro_use]
 extern crate prometheus;
+#[macro_use]
+extern crate env_logger;
 
 mod anonymized_dns;
 mod blacklist;
@@ -184,7 +186,7 @@ async fn handle_client_query(
         }
         .ip();
         debug!(
-            "Anonymized DNS packet -> \npacket size: {:?}\nclient addr: {:?}",
+            "[FORK!] Anonymized DNS: packet size {:?} client addr {:?}",
             original_packet_size, client_ip
         );
         // TODO: remove
@@ -512,11 +514,11 @@ fn privdrop(config: &Config) -> Result<(), Error> {
 }
 
 fn main() -> Result<(), Error> {
-    env_logger::Builder::from_default_env()
+    env_logger::Builder::from_env(env_logger::Env::default().default_filter_or("info"))
         .write_style(env_logger::WriteStyle::Never)
         .format_module_path(false)
         .format_timestamp(None)
-        .filter_level(log::LevelFilter::Debug) // TODO: revert to Info
+        //.filter_level(log::LevelFilter::Info)
         .target(env_logger::Target::Stdout)
         .init();
 
@@ -695,13 +697,15 @@ fn main() -> Result<(), Error> {
         anonymized_dns_allowed_ports,
         anonymized_dns_allow_non_reserved_ports,
         anonymized_dns_blacklisted_ips,
+        anonymized_dns_max_subsequent_relays,
     ) = match config.anonymized_dns {
-        None => (false, vec![], false, vec![]),
+        None => (false, vec![], false, vec![], 0),
         Some(anonymized_dns) => (
             anonymized_dns.enabled,
             anonymized_dns.allowed_ports,
             anonymized_dns.allow_non_reserved_ports.unwrap_or(false),
             anonymized_dns.blacklisted_ips,
+            anonymized_dns.max_subsequent_relays,
         ),
     };
     let access_control_tokens = match config.access_control {
@@ -748,6 +752,7 @@ fn main() -> Result<(), Error> {
         anonymized_dns_allowed_ports,
         anonymized_dns_allow_non_reserved_ports,
         anonymized_dns_blacklisted_ips,
+        anonymized_dns_max_subsequent_relays,
         access_control_tokens,
         my_ip: config.my_ip.map(|ip| ip.as_bytes().to_ascii_lowercase()),
         client_ttl_holdon: config.client_ttl_holdon.unwrap_or(60),
