@@ -5,7 +5,6 @@
 ####################################################
 
 
-
 ##################################
 #         Global settings        #
 ##################################
@@ -22,9 +21,7 @@
 #     { local = "[::]:443",       external = "[2001:db8::1]:443" }
 # ]
 
-listen_addrs = [
-    { local = "0.0.0.0:443",    external = "198.51.100.1:443" }
-]
+listen_addrs = [{ local = "0.0.0.0:443", external = "198.51.100.1:443" }]
 
 
 ## Upstream DNS server and port
@@ -158,7 +155,6 @@ no_logs = true
 key_cache_capacity = 10000
 
 
-
 ###############################
 #         TLS settings        #
 ###############################
@@ -168,7 +164,6 @@ key_cache_capacity = 10000
 ## Where to proxy TLS connections to (e.g. DoH server)
 
 # upstream_addr = "127.0.0.1:4343"
-
 
 
 #######################################
@@ -195,7 +190,6 @@ key_cache_capacity = 10000
 # ignore_unqualified_hostnames = true
 
 
-
 #########################
 #        Metrics        #
 #########################
@@ -205,7 +199,6 @@ key_cache_capacity = 10000
 # type = "prometheus"
 # listen_addr = "0.0.0.0:9100"
 # path = "/metrics"
-
 
 
 ################################
@@ -222,7 +215,7 @@ enabled = false
 # Allowed upstream ports
 # This is a list of commonly used ports for encrypted DNS services
 
-allowed_ports = [ 443, 553, 853, 1443, 2053, 4343, 4434, 4443, 5353, 5443, 8443, 15353 ]
+allowed_ports = [443, 553, 853, 1443, 2053, 4343, 4434, 4443, 5353, 5443, 8443, 15353]
 
 
 # Allow all ports >= 1024 in addition to the list above
@@ -232,9 +225,11 @@ allow_non_reserved_ports = false
 
 # Blacklisted upstream IP addresses
 
-blacklisted_ips = [ "93.184.216.34" ]
+blacklisted_ips = ["93.184.216.34"]
 
-
+# maximum allowed subsequent relays (default = 0)
+# if n, then n hops except for the final destination (DNS server) are allowed.
+# max_subsequent_relays = 0
 
 
 ################################
@@ -253,4 +248,3 @@ enabled = false
 # Example: `query_meta = ["token:Y2oHkDJNHz"]`
 
 tokens = ["Y2oHkDJNHz", "G5zY3J5cHQtY", "C5zZWN1cmUuZG5z"]
-
