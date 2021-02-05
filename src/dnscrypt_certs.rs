@@ -113,7 +113,9 @@ impl DNSCryptEncryptionParams {
         while {
             resolver_kp = CryptKeyPair::new();
             resolver_kp.pk.as_bytes()
-                == &ANONYMIZED_DNSCRYPT_QUERY_MAGIC[..DNSCRYPT_QUERY_MAGIC_SIZE]
+                == &ANONYMIZED_DNSCRYPT_V1_QUERY_MAGIC[..DNSCRYPT_QUERY_MAGIC_SIZE]
+                || resolver_kp.pk.as_bytes()
+                    == &ANONYMIZED_DNSCRYPT_V2_QUERY_MAGIC[..DNSCRYPT_QUERY_MAGIC_SIZE]
         } {}
         let dnscrypt_cert = DNSCryptCert::new(&provider_kp, &resolver_kp);
         let cache = ClockProCache::new(cache_capacity).unwrap();

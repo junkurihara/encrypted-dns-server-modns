@@ -172,12 +172,26 @@ async fn handle_client_query(
 ) -> Result<(), Error> {
     let original_packet_size = encrypted_packet.len();
     ensure!(original_packet_size >= DNS_HEADER_SIZE, "Short packet");
-    debug_assert!(DNSCRYPT_QUERY_MIN_OVERHEAD > ANONYMIZED_DNSCRYPT_QUERY_MAGIC.len());
+    debug_assert!(
+        DNSCRYPT_QUERY_MIN_OVERHEAD > ANONYMIZED_DNSCRYPT_V1_QUERY_MAGIC.len()
+            || DNSCRYPT_QUERY_MIN_OVERHEAD > ANONYMIZED_DNSCRYPT_V2_QUERY_MAGIC.len() + 2
+    );
     if globals.anonymized_dns_enabled
-        && original_packet_size >= ANONYMIZED_DNSCRYPT_QUERY_MAGIC.len() + DNS_HEADER_SIZE
-        && encrypted_packet[..ANONYMIZED_DNSCRYPT_QUERY_MAGIC.len()]
-            == ANONYMIZED_DNSCRYPT_QUERY_MAGIC
+        && (original_packet_size >= ANONYMIZED_DNSCRYPT_V1_QUERY_MAGIC.len() + DNS_HEADER_SIZE
+            || original_packet_size
+                >= ANONYMIZED_DNSCRYPT_V2_QUERY_MAGIC.len() + 2 + DNS_HEADER_SIZE)
+        && (encrypted_packet[..ANONYMIZED_DNSCRYPT_V1_QUERY_MAGIC.len()]
+            == ANONYMIZED_DNSCRYPT_V1_QUERY_MAGIC
+            || encrypted_packet[..ANONYMIZED_DNSCRYPT_V2_QUERY_MAGIC.len()]
+                == ANONYMIZED_DNSCRYPT_V2_QUERY_MAGIC)
     {
+        let (version, offset) = if encrypted_packet[..ANONYMIZED_DNSCRYPT_V2_QUERY_MAGIC.len()]
+            == ANONYMIZED_DNSCRYPT_V2_QUERY_MAGIC
+        {
+            (2, ANONYMIZED_DNSCRYPT_V2_QUERY_MAGIC.len())
+        } else {
+            (1, ANONYMIZED_DNSCRYPT_V1_QUERY_MAGIC.len())
+        };
         //////////
         // TODO: remove
         let client_ip = match &client_ctx {
@@ -186,17 +200,13 @@ async fn handle_client_query(
         }
         .ip();
         debug!(
-            "[FORK!] Anonymized DNS: packet size {:?} client addr {:?}",
-            original_packet_size, client_ip
+            "[FORK!] Anonymized DNS (proto v{:?}): packet size {:?} client addr {:?}",
+            version, original_packet_size, client_ip
         );
         // TODO: remove
         //////////
-        return handle_anonymized_dns(
-            globals,
-            client_ctx,
-            &encrypted_packet[ANONYMIZED_DNSCRYPT_QUERY_MAGIC.len()..],
-        )
-        .await;
+        return handle_anonymized_dns(globals, client_ctx, &encrypted_packet[offset..], version)
+            .await;
     }
     if !globals.dnscrypt_enabled {
         return Ok(());
