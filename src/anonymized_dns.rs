@@ -206,13 +206,7 @@ pub async fn handle_anonymized_dns(
     response.truncate(response_len);
     if is_certificate_response {
         let mut hasher = globals.hasher;
-        // TODO: V2分岐うざい
-        let offset = if version == 1 || subsq_nodes_after_nexthop.len() == 0 {
-            ip_port_block_size * subsq_nodes_after_nexthop.len()
-        } else {
-            ip_port_block_size * subsq_nodes_after_nexthop.len() + 2
-        };
-        //
+        let offset = ip_port_block_size * subsq_nodes_after_nexthop.len();
         hasher.write(&relayed_packet[offset..(offset + ANONYMIZED_DNSCRYPT_OVERHEAD)]); // target DNS server addr and port
         hasher.write(&dns::qname(&encrypted_packet[offset..])?); // target DNS server qname
         let packet_hash = hasher.finish128().as_u128();
