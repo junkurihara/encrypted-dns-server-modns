@@ -198,7 +198,7 @@ async fn handle_client_query(
             ClientCtx::Udp(u) => u.client_addr,
             ClientCtx::Tcp(t) => t.client_connection.peer_addr()?,
         }
-        .ip();
+        .to_string();
         debug!(
             "[FORK!] Anonymized DNS (proto v{:?}): packet size {:?} client addr {:?}",
             version, original_packet_size, client_ip
@@ -349,10 +349,12 @@ async fn tcp_acceptor(globals: Arc<Globals>, tcp_listener: TcpListener) -> Resul
         };
         let fut_abort = rx;
         let fut_all = tokio::time::timeout(timeout, future::select(fut.boxed(), fut_abort));
-        runtime_handle.spawn(fut_all.map(move |_| {
+        // runtime_handle.spawn(fut_all.map(move |_| {
+        runtime_handle.spawn(fut_all.map(move |x| {
             let _count = concurrent_connections.fetch_sub(1, Ordering::Relaxed);
             #[cfg(feature = "metrics")]
             varz.inflight_tcp_queries.set(_count.saturating_sub(1) as _);
+            print_error(x); // TODO: for debug
         }));
     }
     Ok(())
@@ -402,13 +404,25 @@ async fn udp_acceptor(
         let fut = handle_client_query(globals, client_ctx, packet);
         let fut_abort = rx;
         let fut_all = tokio::time::timeout(timeout, future::select(fut.boxed(), fut_abort));
-        runtime_handle.spawn(fut_all.map(move |_| {
+        // runtime_handle.spawn(fut_all.map(move |_| {
+        runtime_handle.spawn(fut_all.map(move |x| {
             let _count = concurrent_connections.fetch_sub(1, Ordering::Relaxed);
             #[cfg(feature = "metrics")]
             varz.inflight_udp_queries.set(_count.saturating_sub(1) as _);
+            print_error(x); // TODO: for debug
         }));
     }
 }
+
+/////////////////////////////////////////////////
+// TODO: just for debugging!
+#[inline]
+fn print_error<T1, T2, E1>(x: Result<future::Either<(Result<(), Error>, T2), T1>, E1>) {
+    if let Ok(future::Either::Left((Err(e), _))) = x {
+        warn!("[FORK!] {:?}", e);
+    }
+}
+/////////////////////////////////////////////////
 
 async fn start(
     globals: Arc<Globals>,
@@ -574,6 +588,7 @@ fn main() -> Result<(), Error> {
     let runtime = runtime_builder.build()?;
 
     let listen_addrs: Vec<_> = config.listen_addrs.iter().map(|x| x.local).collect();
+    let listen_addrs_ext: Vec<_> = config.listen_addrs.iter().map(|x| x.external).collect(); // for loop detection
     let listeners = bind_listeners(&listen_addrs)
         .map_err(|e| {
             error!("Unable to listen to the requested IPs and ports: [{}]", e);
@@ -735,6 +750,7 @@ fn main() -> Result<(), Error> {
         provider_name,
         provider_kp,
         listen_addrs,
+        listen_addrs_ext,
         upstream_addr: config.upstream_addr,
         tls_upstream_addr: config.tls.upstream_addr,
         external_addr,

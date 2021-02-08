@@ -4,6 +4,7 @@ use crate::*;
 use byteorder::{BigEndian, ByteOrder};
 use ipext::IpExt;
 use siphasher::sip128::Hasher128;
+use std::collections::HashSet;
 use std::hash::Hasher;
 use std::net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr, SocketAddrV4, SocketAddrV6};
 use std::sync::Arc;
@@ -24,42 +25,27 @@ pub const ANONYMIZED_DNSCRYPT_V2_QUERY_MAGIC: [u8; 10] =
 pub const RELAYED_CERT_CACHE_SIZE: usize = 1000;
 pub const RELAYED_CERT_CACHE_TTL: u32 = 600;
 
-#[derive(Debug)]
-struct Node<'a> {
-    ip_bin: &'a [u8],
-    port_bin: &'a [u8],
-}
+fn get_new_node(bin: &[u8]) -> std::net::SocketAddr {
+    let ip_bin = &bin[..16];
+    let port_bin = &bin[16..18];
 
-impl<'a> Node<'a> {
-    pub fn new(bin: &[u8]) -> Node {
-        Node {
-            ip_bin: &bin[..16],
-            port_bin: &bin[16..18],
-        }
-    }
+    let ip_v6 = Ipv6Addr::new(
+        BigEndian::read_u16(&ip_bin[0..2]),
+        BigEndian::read_u16(&ip_bin[2..4]),
+        BigEndian::read_u16(&ip_bin[4..6]),
+        BigEndian::read_u16(&ip_bin[6..8]),
+        BigEndian::read_u16(&ip_bin[8..10]),
+        BigEndian::read_u16(&ip_bin[10..12]),
+        BigEndian::read_u16(&ip_bin[12..14]),
+        BigEndian::read_u16(&ip_bin[14..16]),
+    );
+    let ip = match ip_v6.to_ipv4() {
+        Some(ip_v4) => IpAddr::V4(ip_v4),
+        None => IpAddr::V6(ip_v6),
+    };
+    let port = BigEndian::read_u16(port_bin);
 
-    pub fn ip(&self) -> std::net::IpAddr {
-        let ip_v6 = Ipv6Addr::new(
-            BigEndian::read_u16(&self.ip_bin[0..2]),
-            BigEndian::read_u16(&self.ip_bin[2..4]),
-            BigEndian::read_u16(&self.ip_bin[4..6]),
-            BigEndian::read_u16(&self.ip_bin[6..8]),
-            BigEndian::read_u16(&self.ip_bin[8..10]),
-            BigEndian::read_u16(&self.ip_bin[10..12]),
-            BigEndian::read_u16(&self.ip_bin[12..14]),
-            BigEndian::read_u16(&self.ip_bin[14..16]),
-        );
-        let ip = match ip_v6.to_ipv4() {
-            Some(ip_v4) => IpAddr::V4(ip_v4),
-            None => IpAddr::V6(ip_v6),
-        };
-        ip
-    }
-
-    pub fn port(&self) -> u16 {
-        let port = BigEndian::read_u16(&self.port_bin);
-        port
-    }
+    std::net::SocketAddr::new(ip, port)
 }
 
 pub async fn handle_anonymized_dns(
@@ -83,8 +69,9 @@ pub async fn handle_anonymized_dns(
         (2, ANONYMIZED_DNSCRYPT_OVERHEAD)
     };
 
-    let nexthop_node =
-        Node::new(&relayed_packet[offset_ip_addr..(offset_ip_addr + ANONYMIZED_DNSCRYPT_OVERHEAD)]);
+    let nexthop_node = get_new_node(
+        &relayed_packet[offset_ip_addr..(offset_ip_addr + ANONYMIZED_DNSCRYPT_OVERHEAD)],
+    );
     let nexthop_ip = nexthop_node.ip();
     let nexthop_port = nexthop_node.port();
 
@@ -124,36 +111,38 @@ pub async fn handle_anonymized_dns(
     );
 
     /////////////////////////////
-    // ensure!(
-    //     encrypted_packet[..ANONYMIZED_DNSCRYPT_QUERY_MAGIC.len()]
-    //         != ANONYMIZED_DNSCRYPT_QUERY_MAGIC,
-    //     "Loop detected"
-    // );
-    // TODO: 安全のためにはここのループ判定の条件を難しくしないとダメ。一応コメントアウトで対処。
-    // TODO: このとき、最大ホップ数とかで落としてあげるのが優しいと思われる。
-    // TODO: ループディテクションはないとたしかに厳しいので、一旦バラしてどうの、というのを考えるほうが良さそう。
-    // TODO: 本当はプロキシの方でもちゃんとやるほうが良いと思われる。
-    //
-    // subseq after nexthop array includes final target = DNS server
+    // parse subsequent nodes (including final target = DNS server) after nexthop
     // TODO: V2分岐うざい
     let subsq_nodes_after_nexthop = if version == 1 {
         parse_subsq_after_nexthop_v1(&encrypted_packet)?
     } else {
         parse_subsq_after_nexthop_v2(&encrypted_packet, BigEndian::read_u16(&relayed_packet[..2]))?
     };
-    //
-    // for debug
-    let mut trail: Vec<std::string::String> = (&subsq_nodes_after_nexthop)
-        .into_iter()
-        .map(|x| format!("{:?}:{:?}", x.ip(), x.port()))
-        .collect();
-    trail.insert(0, format!("{:?}:{:?}", nexthop_ip, nexthop_port));
-    debug!("[FORK!] trail after this node: {:?}", trail);
+    // limit of max subsequent relays
     ensure!(
         !(subsq_nodes_after_nexthop.len() > globals.anonymized_dns_max_subsequent_relays),
         "Exceeds the maximum allowed number of subsequent relays"
     );
+
     /////////////////////////////
+    // loop detection. if dups are detected, terminate forwarding.
+    // TODO: more intelligent loop detection?
+    let mut trail: Vec<String> = (&subsq_nodes_after_nexthop)
+        .iter()
+        .map(|x| x.to_string())
+        .collect();
+    trail.insert(0, nexthop_node.to_string());
+    debug!("[FORK!] trail after this node: {:?}", trail); // for debug
+    let my_addrs: Vec<String> = globals
+        .listen_addrs_ext
+        .iter()
+        .map(|x| (x.to_string()))
+        .collect();
+    trail.extend_from_slice(&my_addrs);
+    let node_set: HashSet<&String> = trail.iter().collect();
+    ensure!(trail.len() == node_set.len(), "Loop detected");
+    /////////////////////////////
+
     let ext_socket = match globals.external_addr {
         Some(x) => UdpSocket::bind(x).await?,
         None => match upstream_address {
@@ -248,7 +237,7 @@ fn is_encrypted_response(response: &[u8], response_len: usize) -> bool {
 }
 
 // parse subsequent nodes that includes the target dns server if multiple relays used
-fn parse_subsq_after_nexthop_v1(query: &[u8]) -> Result<Vec<Node>, Error> {
+fn parse_subsq_after_nexthop_v1(query: &[u8]) -> Result<Vec<std::net::SocketAddr>, Error> {
     let mut nodes = vec![];
     let magic_len = ANONYMIZED_DNSCRYPT_V1_QUERY_MAGIC.len();
     let mut raw_query_offset = 0;
@@ -260,7 +249,7 @@ fn parse_subsq_after_nexthop_v1(query: &[u8]) -> Result<Vec<Node>, Error> {
         );
         let next_header = &query[raw_query_offset..(raw_query_offset + magic_len)];
         if next_header == ANONYMIZED_DNSCRYPT_V1_QUERY_MAGIC {
-            let next_node = Node::new(&query[(raw_query_offset + magic_len)..]);
+            let next_node = get_new_node(&query[(raw_query_offset + magic_len)..]);
             nodes.push(next_node);
             raw_query_offset += magic_len + ANONYMIZED_DNSCRYPT_OVERHEAD;
         } else {
@@ -271,7 +260,10 @@ fn parse_subsq_after_nexthop_v1(query: &[u8]) -> Result<Vec<Node>, Error> {
     Ok(nodes)
 }
 
-fn parse_subsq_after_nexthop_v2(query: &[u8], num: u16) -> Result<Vec<Node>, Error> {
+fn parse_subsq_after_nexthop_v2(
+    query: &[u8],
+    num: u16,
+) -> Result<Vec<std::net::SocketAddr>, Error> {
     let mut nodes = vec![];
 
     if num > 0 {
@@ -280,7 +272,7 @@ fn parse_subsq_after_nexthop_v2(query: &[u8], num: u16) -> Result<Vec<Node>, Err
             "Invalid header for anonymized DNS v2"
         );
         for i in 0..num - 1 {
-            let next_node = Node::new(&query[((i as usize) * ANONYMIZED_DNSCRYPT_OVERHEAD)..]);
+            let next_node = get_new_node(&query[((i as usize) * ANONYMIZED_DNSCRYPT_OVERHEAD)..]);
             nodes.push(next_node);
         }
     }
@@ -291,7 +283,7 @@ fn parse_subsq_after_nexthop_v2(query: &[u8], num: u16) -> Result<Vec<Node>, Err
 fn is_certificate_response(
     response: &[u8],
     query: &[u8],
-    subsequent_nodes: &Vec<Node>,
+    subsequent_nodes: &Vec<std::net::SocketAddr>,
     version: usize,
 ) -> bool {
     let prefix = b"2.dnscrypt-cert.";
