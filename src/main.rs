@@ -194,14 +194,15 @@ async fn handle_client_query(
         };
         //////////
         // TODO: remove
-        let client_ip = match &client_ctx {
-            ClientCtx::Udp(u) => u.client_addr,
-            ClientCtx::Tcp(t) => t.client_connection.peer_addr()?,
-        }
-        .to_string();
         debug!(
             "[FORK!] Anonymized DNS (proto v{:?}): packet size {:?} client addr {:?}",
-            version, original_packet_size, client_ip
+            version,
+            original_packet_size,
+            match &client_ctx {
+                ClientCtx::Udp(u) => u.client_addr,
+                ClientCtx::Tcp(t) => t.client_connection.peer_addr()?,
+            }
+            .to_string()
         );
         // TODO: remove
         //////////
@@ -354,7 +355,7 @@ async fn tcp_acceptor(globals: Arc<Globals>, tcp_listener: TcpListener) -> Resul
             let _count = concurrent_connections.fetch_sub(1, Ordering::Relaxed);
             #[cfg(feature = "metrics")]
             varz.inflight_tcp_queries.set(_count.saturating_sub(1) as _);
-            print_error(x); // TODO: for debug
+            debug!("[FORK!] {}", &parse_error(x)); // TODO: for debug
         }));
     }
     Ok(())
@@ -409,18 +410,23 @@ async fn udp_acceptor(
             let _count = concurrent_connections.fetch_sub(1, Ordering::Relaxed);
             #[cfg(feature = "metrics")]
             varz.inflight_udp_queries.set(_count.saturating_sub(1) as _);
-            print_error(x); // TODO: for debug
+            debug!("[FORK!] {}", &parse_error(x)); // TODO: for debug
         }));
     }
 }
 
 /////////////////////////////////////////////////
-// TODO: just for debugging!
+// just for debugging!
 #[inline]
-fn print_error<T1, T2, E1>(x: Result<future::Either<(Result<(), Error>, T2), T1>, E1>) {
+fn parse_error<T1, T2>(
+    x: Result<future::Either<(Result<(), Error>, T2), T1>, tokio::time::error::Elapsed>,
+) -> String {
     if let Ok(future::Either::Left((Err(e), _))) = x {
-        warn!("[FORK!] {:?}", e);
+        return e.to_string();
+    } else if let Err(y) = x {
+        return y.to_string();
     }
+    "no error".to_string()
 }
 /////////////////////////////////////////////////
 
@@ -538,6 +544,7 @@ fn privdrop(config: &Config) -> Result<(), Error> {
 }
 
 fn main() -> Result<(), Error> {
+    // env_logger::Builder::from_default_env()
     env_logger::Builder::from_env(env_logger::Env::default().default_filter_or("info"))
         .write_style(env_logger::WriteStyle::Never)
         .format_module_path(false)
