@@ -52,6 +52,7 @@ use globals::*;
 use varz::*;
 
 use byteorder::{BigEndian, ByteOrder};
+use chrono::Local;
 use clap::Arg;
 use clockpro_cache::ClockProCache;
 use dnsstamps::{InformalProperty, WithInformalProperty};
@@ -548,8 +549,17 @@ fn main() -> Result<(), Error> {
     env_logger::Builder::from_env(env_logger::Env::default().default_filter_or("info"))
         .write_style(env_logger::WriteStyle::Never)
         .format_module_path(false)
-        .format_timestamp(None)
-        //.filter_level(log::LevelFilter::Info)
+        .format(|buf, record| {
+            writeln!(
+                buf,
+                "[{}] [{}] - {}",
+                Local::now().format("%Y-%m-%d %H:%M:%S"),
+                record.level(),
+                record.args()
+            )
+        })
+        // .format_timestamp(None)
+        // .filter_level(log::LevelFilter::Info)
         .target(env_logger::Target::Stdout)
         .init();
 
