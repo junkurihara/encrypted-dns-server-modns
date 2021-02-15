@@ -7,15 +7,15 @@
     {
       "type": "lldb",
       "request": "launch",
-      "name": "Debug executable 'encrypted-dns'",
+      "name": "Debug executable 'encrypted-dns-fork'",
       "cargo": {
         "args": [
           "build",
-          "--bin=encrypted-dns",
-          "--package=encrypted-dns"
+          "--bin=encrypted-dns-fork",
+          "--package=encrypted-dns-fork"
         ],
         "filter": {
-          "name": "encrypted-dns",
+          "name": "encrypted-dns-fork",
           "kind": "bin"
         }
       },
@@ -30,16 +30,16 @@
     {
       "type": "lldb",
       "request": "launch",
-      "name": "Debug unit tests in executable 'encrypted-dns'",
+      "name": "Debug unit tests in executable 'encrypted-dns-fork'",
       "cargo": {
         "args": [
           "test",
           "--no-run",
-          "--bin=encrypted-dns",
-          "--package=encrypted-dns"
+          "--bin=encrypted-dns-fork",
+          "--package=encrypted-dns-fork"
         ],
         "filter": {
-          "name": "encrypted-dns",
+          "name": "encrypted-dns-fork",
           "kind": "bin"
         }
       },
