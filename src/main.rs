@@ -744,7 +744,7 @@ fn main() -> Result<(), Error> {
         anonymized_dns_blacklisted_ips,
         anonymized_dns_max_subsequent_relays,
     ) = match config.anonymized_dns {
-        None => (false, vec![], false, vec![], 0),
+        None => (false, vec![], false, vec![], 2),
         Some(anonymized_dns) => (
             anonymized_dns.enabled,
             anonymized_dns.allowed_ports,

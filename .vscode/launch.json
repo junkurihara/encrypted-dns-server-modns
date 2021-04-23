@@ -7,15 +7,15 @@
     {
       "type": "lldb",
       "request": "launch",
-      "name": "Debug executable 'encrypted-dns-fork'",
+      "name": "Debug executable 'encrypted-dns-modns'",
       "cargo": {
         "args": [
           "build",
-          "--bin=encrypted-dns-fork",
-          "--package=encrypted-dns-fork"
+          "--bin=encrypted-dns-modns",
+          "--package=encrypted-dns-modns"
         ],
         "filter": {
-          "name": "encrypted-dns-fork",
+          "name": "encrypted-dns-modns",
           "kind": "bin"
         }
       },
@@ -30,16 +30,16 @@
     {
       "type": "lldb",
       "request": "launch",
-      "name": "Debug unit tests in executable 'encrypted-dns-fork'",
+      "name": "Debug unit tests in executable 'encrypted-dns-modns'",
       "cargo": {
         "args": [
           "test",
           "--no-run",
-          "--bin=encrypted-dns-fork",
-          "--package=encrypted-dns-fork"
+          "--bin=encrypted-dns-modns",
+          "--package=encrypted-dns-modns"
         ],
         "filter": {
-          "name": "encrypted-dns-fork",
+          "name": "encrypted-dns-modns",
           "kind": "bin"
         }
       },

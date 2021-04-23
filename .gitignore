@@ -4,5 +4,10 @@
 Cargo.lock
 encrypted-dns.state
 encrypted-dns.toml
+
+# for debugging
 # .vscode/
 .private/
+
+# temporary
+.github/

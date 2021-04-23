@@ -215,6 +215,7 @@ enabled = false
 # Allowed upstream ports
 # This is a list of commonly used ports for encrypted DNS services
 
+# Added 50443 for mu-ODNS
 allowed_ports = [443, 553, 853, 1443, 2053, 4343, 4434, 4443, 5353, 5443, 8443, 15353, 50443]
 
 
@@ -227,9 +228,15 @@ allow_non_reserved_ports = false
 
 blacklisted_ips = ["93.184.216.34"]
 
-# maximum allowed subsequent relays (default = 0)
-# if n, then n subsequent hops except for the final destination (DNS server) are allowed.
-# max_subsequent_relays = 0
+#####################################################
+### For privacy enhanced anonymized DNS (mu-ODNS) ###
+#####################################################
+
+# Maximum allowed relays after this server (default = 2).
+# If it is n, then n subsequent hops except for the final destination (DNS server) are allowed.
+# If it is 0, the next node after this server must be the target DNSCrypt v2 resolver.
+
+max_subsequent_relays = 2
 
 
 ################################

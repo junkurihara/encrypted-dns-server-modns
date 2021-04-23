@@ -1,4 +1,39 @@
+# A forked version of encrypted-dns-server for &mu;ODNS
+
+This repo is a forked version of [`encrypted-dns-server`](https://github.com/jedisct1/encrypted-dns-server). From the original version, this has been modified to employ a PoC implementation of **&mu;ODNS** that is a **multiple-relay-based anonymization protocol for DNS queries**.
+
+&mu;ODNS has been designed to protect user privacy in DNS even if a relay(s) collude with a resolver(s), which cannot be solved in existing DNS anonymization protocols. For the detailed information of &mu;ODNS, please refer to our concept paper below:
+
+> (Link to the concept paper)
+
+The client proxy translating Do53 (traditional DNS) to PoC &mu;ODNS is available at [https://github.com/junkurihara/dnscrypt-proxy-modns](https://github.com/junkurihara/dnscrypt-proxy-modns). Publicly available relays for PoC &mu;ODNS are listed at [https://github.com/junkurihara/experimental-resolvers](https://github.com/junkurihara/experimental-resolvers), where these relays has been deployed with the code in this repo.
+
+> **NOTE**: **At this time this solution should be considered suitable for research and experimentation.**
+
+---
+
+## How to configure for PoC &mu;ODNS
+
+---
+
+## Modified parts from the original version
+
+We only modified the following parts from the original repo of `encrypted-dns-server`:
+
+- modified several `.rs` files in `src/`
+
+- modified the example configuration file `example-encrypted-dns.toml'
+
+> **NOTE**: This repo continuously tracks and reflects changes in the original repo of `encrypted-dns-server`. At this point, Github Actions (under `.github/`) do not work in this forked repo since their setting is not modified for the forked version yet. (We are planning to do that.)
+
+---
+
+Below is the original README.md.
+
+---
+
 # ![Encrypted DNS Server](logo.png)
+
 ![Github CI status](https://img.shields.io/github/workflow/status/jedisct1/encrypted-dns-server/Rust)
 [![Gitter chat](https://badges.gitter.im/gitter.svg)](https://gitter.im/dnscrypt-operators/Lobby)
 
