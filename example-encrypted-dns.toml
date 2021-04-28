@@ -209,7 +209,7 @@ key_cache_capacity = 10000
 
 # Enable relaying support for Anonymized DNS
 
-enabled = false
+enabled = true
 
 
 # Allowed upstream ports

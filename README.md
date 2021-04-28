@@ -14,6 +14,33 @@ The client proxy translating Do53 (traditional DNS) to PoC &mu;ODNS is available
 
 ## How to configure for PoC &mu;ODNS
 
+The PoC implementation of &mu;ODNS has been implemented by extending the Anonymized DNSCrypt protocol of DNSCrypt v2. Original `encrypted-dns-server` provides two functions: translating DNSCrypt v2 messages to Do53 messages to upstream resolvers, and relaying Anonymized DNSCrypt query messages to upstream `encrypted-dns-server` instances. In addition to these functions, `encrypted-dns-server-modns` provides a function to relay PoC &mu;ODNS query messages to relays or upstream resolvers. Thus in the configuration file, our `encrypted-dns-server-modns` only adds the option of `[anonymized_dns]` section in `encrypted-dns.toml` for PoC &mu;ODNS.
+
+```:toml
+#####################################################
+### For privacy enhanced anonymized DNS (mu-ODNS) ###
+#####################################################
+
+# Maximum allowed relays after this server (default = 2).
+# If it is n, then n subsequent hops except for the final destination (DNS server) are allowed.
+# If it is 0, the next node after this server must be the target DNSCrypt v2 resolver.
+
+max_subsequent_relays = 2
+```
+
+Please refer to the example file `example-encrypted-dns.toml`.
+
+The option `max_subsequent_relays` is given to simply avoid the overload for incredibly large number of relays. Our implementation also has the loop avoidance for relaying.
+
+If you want to see debug messages, please run with an environment variable `RUST_LOG=debug` as:
+
+```:bash
+$ cargo build
+$ RUST_LOG=debug target/debug/encrypted-dns-modns --config=encrypted-dns.toml
+```
+
+**We are also planning to publish a docker image and Dockerfile of `encrypted-dns-server-modns`**.
+
 ---
 
 ## Modified parts from the original version
