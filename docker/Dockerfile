@@ -1,8 +1,6 @@
 FROM ubuntu:20.04
 LABEL maintainer="Jun Kurihara"
 
-ARG DEBUG
-
 SHELL ["/bin/sh", "-x", "-c"]
 ENV SERIAL 2
 
@@ -54,13 +52,13 @@ RUN groupadd _encrypted-dns && \
 RUN mkdir -p \
     /etc/service/watchdog
 
-COPY encrypted-dns.toml.in /opt/encrypted-dns/etc/
+COPY docker/encrypted-dns.toml.in /opt/encrypted-dns/etc/
 
-COPY entrypoint.sh /
+COPY docker/entrypoint.sh /
 
-COPY encrypted-dns.sh /etc/service/encrypted-dns/run
+COPY docker/encrypted-dns.sh /etc/service/encrypted-dns/run
 
-COPY watchdog.sh /etc/service/watchdog/run
+COPY docker/watchdog.sh /etc/service/watchdog/run
 
 VOLUME ["/opt/encrypted-dns/etc/keys"]
 

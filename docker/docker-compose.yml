@@ -5,7 +5,8 @@ services:
     container_name: dnscrypt-server-modns
     # Comment out build section if you download pre-built image from Docker Hub.
     build:
-      context: ./
+      context: ../
+      dockerfile: docker/Dockerfile
       args:
         - PORT=${PORT}
     ulimits:
