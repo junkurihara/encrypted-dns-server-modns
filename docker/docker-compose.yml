@@ -1,0 +1,41 @@
+version: "3"
+services:
+  dnscrypt-server:
+    image: jqtype/dnscrypt-server-modns
+    container_name: dnscrypt-server-modns
+    # Comment out build section if you download pre-built image from Docker Hub.
+    build:
+      context: ./
+      args:
+        - PORT=${PORT}
+    ulimits:
+      nofile:
+        soft: 90000
+        hard: 90000
+    restart: unless-stopped
+    env_file: .env
+    ports:
+      - ${PORT}:${PORT}/udp
+      - ${PORT}:${PORT}/tcp
+    expose:
+      - 9100 # for prometheus server working in same private network
+    command: init -A -N ${DOMAIN_NAME} -E '${IPV4_ADDR}:${PORT}' -M 0.0.0.0:9100
+    volumes:
+      - ./.env:/opt/encrypted-dns/etc/.env
+      - ./data/keys:/opt/encrypted-dns/etc/keys
+      - ./data/lists:/opt/encrypted-dns/etc/lists
+      - ./log/dnscrypt-server:/var/log/dnscrypt-server
+    # network_mode: "host"
+    networks:
+      net-modns-external: # to directly connect with mdons-proxy
+        ipv4_address: 192.168.153.53
+
+networks:
+  net-modns-external:
+    name: net-modns-external
+    #internal: true
+    driver: bridge
+    ipam:
+      driver: default
+      config:
+        - subnet: 192.168.153.0/24

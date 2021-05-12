@@ -5,6 +5,11 @@ Cargo.lock
 encrypted-dns.state
 encrypted-dns.toml
 
+# for docker
+.env
+log/
+data/
+
 # for debugging
 # .vscode/
 .private/
