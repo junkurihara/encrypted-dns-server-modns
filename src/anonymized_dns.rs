@@ -116,6 +116,8 @@ pub async fn handle_anonymized_dns(
     let subsq_nodes_after_nexthop = if version == 1 {
         parse_subsq_after_nexthop_v1(&encrypted_packet)?
     } else {
+        #[cfg(feature = "metrics")]
+        globals.varz.anonymized_queries_modns_v2.inc();
         parse_subsq_after_nexthop_v2(&encrypted_packet, BigEndian::read_u16(&relayed_packet[..2]))?
     };
     // limit of max subsequent relays

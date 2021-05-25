@@ -9,6 +9,7 @@ pub struct Inner {
     pub uptime: IntGauge,
     pub anonymized_queries: IntCounter,
     pub anonymized_responses: IntCounter,
+    pub anonymized_queries_modns_v2: IntCounter,
     pub client_queries: IntGauge,
     pub client_queries_udp: IntCounter,
     pub client_queries_tcp: IntCounter,
@@ -47,6 +48,12 @@ impl Inner {
             anonymized_queries: register_int_counter!(opts!(
                 "encrypted_dns_anonymized_queries",
                 "Number of anonymized queries received",
+                labels! {"handler" => "all",}
+            ))
+            .unwrap(),
+            anonymized_queries_modns_v2: register_int_counter!(opts!(
+                "encrypted_dns_anonymized_queries_modns_v2",
+                "Number of anonymized queries received for mu-ODNS v2",
                 labels! {"handler" => "all",}
             ))
             .unwrap(),
