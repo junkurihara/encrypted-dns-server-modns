@@ -11,7 +11,7 @@ ENV RUNTIME_DEPS bash util-linux coreutils findutils grep libssl1.1 ldnsutils li
 ENV MODNS_GIT_URL https://github.com/junkurihara/encrypted-dns-server-modns
 ENV MODNS_GIT_BRANCH peeling_header
 
-RUN apt update; apt -qy dist-upgrade; apt -qy clean && \
+RUN apt update && apt -qy dist-upgrade && apt -qy clean && \
     apt install -qy --no-install-recommends $RUNTIME_DEPS && \
     rm -fr /tmp/* /var/tmp/* /var/cache/apt/* /var/lib/apt/lists/* /var/log/apt/* /var/log/*.log
 
