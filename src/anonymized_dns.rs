@@ -165,7 +165,7 @@ pub async fn handle_anonymized_dns(
     ext_socket.connect(&upstream_address).await?;
     // TODO: V2分岐うざい
     if version == 1 || subsq_nodes_after_nexthop.len() == 0 {
-        ext_socket.send(&encrypted_packet).await?;
+        ext_socket.send(encrypted_packet).await?;
     } else {
         let mut next = vec![0, 0];
         BigEndian::write_u16(&mut next, subsq_nodes_after_nexthop.len() as u16);
@@ -187,7 +187,7 @@ pub async fn handle_anonymized_dns(
         }
         if is_certificate_response(
             &response,
-            &encrypted_packet,
+            encrypted_packet,
             &subsq_nodes_after_nexthop,
             version,
         ) {

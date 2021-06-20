@@ -512,9 +512,6 @@ fn bind_listeners(
 }
 
 fn privdrop(config: &Config) -> Result<(), Error> {
-    if config.daemonize && config.metrics.is_some() {
-        bail!("Metrics are incompatible with daemonization - set 'daemonize = false' in the configuration file if you need metrics.");
-    }
     let mut pd = PrivDrop::default();
     if let Some(user) = &config.user {
         pd = pd.user(user);
@@ -602,11 +599,6 @@ fn main() -> Result<(), Error> {
     };
     let external_addr = config.external_addr.map(|addr| SocketAddr::new(addr, 0));
 
-    let mut runtime_builder = tokio::runtime::Builder::new_multi_thread();
-    runtime_builder.enable_all();
-    runtime_builder.thread_name("encrypted-dns-");
-    let runtime = runtime_builder.build()?;
-
     let listen_addrs: Vec<_> = config.listen_addrs.iter().map(|x| x.local).collect();
     let listen_addrs_ext: Vec<_> = config.listen_addrs.iter().map(|x| x.external).collect(); // for loop detection
     let listeners = bind_listeners(&listen_addrs)
@@ -616,6 +608,11 @@ fn main() -> Result<(), Error> {
         })
         .unwrap();
     privdrop(&config)?;
+
+    let mut runtime_builder = tokio::runtime::Builder::new_multi_thread();
+    runtime_builder.enable_all();
+    runtime_builder.thread_name("encrypted-dns-");
+    let runtime = runtime_builder.build()?;
 
     let key_cache_capacity = config.dnscrypt.key_cache_capacity;
     let cache_capacity = config.cache_capacity;
