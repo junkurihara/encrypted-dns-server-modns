@@ -97,8 +97,7 @@ pub async fn handle_anonymized_dns(
     let encrypted_packet = &relayed_packet[(offset_ip_addr + ANONYMIZED_DNSCRYPT_OVERHEAD)..];
     let encrypted_packet_len = encrypted_packet.len();
     ensure!(
-        encrypted_packet_len >= DNS_HEADER_SIZE
-            && encrypted_packet_len <= DNSCRYPT_UDP_QUERY_MAX_SIZE,
+        (DNS_HEADER_SIZE..=DNSCRYPT_UDP_QUERY_MAX_SIZE).contains(&encrypted_packet_len),
         "Unexpected encapsulated query length"
     );
     ensure!(
@@ -114,11 +113,11 @@ pub async fn handle_anonymized_dns(
     // parse subsequent nodes (including final target = DNS server) after nexthop
     // TODO: V2分岐うざい
     let subsq_nodes_after_nexthop = if version == 1 {
-        parse_subsq_after_nexthop_v1(&encrypted_packet)?
+        parse_subsq_after_nexthop_v1(encrypted_packet)?
     } else {
         #[cfg(feature = "metrics")]
         globals.varz.anonymized_queries_modns_v2.inc();
-        parse_subsq_after_nexthop_v2(&encrypted_packet, BigEndian::read_u16(&relayed_packet[..2]))?
+        parse_subsq_after_nexthop_v2(encrypted_packet, BigEndian::read_u16(&relayed_packet[..2]))?
     };
     // limit of max subsequent relays
     ensure!(
@@ -164,14 +163,14 @@ pub async fn handle_anonymized_dns(
     };
     ext_socket.connect(&upstream_address).await?;
     // TODO: V2分岐うざい
-    if version == 1 || subsq_nodes_after_nexthop.len() == 0 {
+    if version == 1 || subsq_nodes_after_nexthop.is_empty() {
         ext_socket.send(encrypted_packet).await?;
     } else {
         let mut next = vec![0, 0];
         BigEndian::write_u16(&mut next, subsq_nodes_after_nexthop.len() as u16);
         let mut output = ANONYMIZED_DNSCRYPT_V2_QUERY_MAGIC.to_vec();
         output.extend_from_slice(&next);
-        output.extend_from_slice(&encrypted_packet);
+        output.extend_from_slice(encrypted_packet);
         ext_socket.send(&output).await?;
     };
     //
@@ -285,14 +284,14 @@ fn parse_subsq_after_nexthop_v2(
 fn is_certificate_response(
     response: &[u8],
     query: &[u8],
-    subsequent_nodes: &Vec<std::net::SocketAddr>,
+    subsequent_nodes: &[std::net::SocketAddr],
     version: usize,
 ) -> bool {
     let prefix = b"2.dnscrypt-cert.";
     let mut raw_query_offset = 0;
     //////
     // In case where multiple hop nodes exist after this relay.
-    if subsequent_nodes.len() > 0 {
+    if !subsequent_nodes.is_empty() {
         if version == 1 {
             if query.len() > subsequent_nodes.len() * ANONYMIZED_DNSCRYPT_V1_HEADER_LEN {
                 raw_query_offset += subsequent_nodes.len() * ANONYMIZED_DNSCRYPT_V1_HEADER_LEN;
@@ -300,13 +299,11 @@ fn is_certificate_response(
                 error!("[FORK!] Unexpected size of query for multihop relays (version 1)");
                 return false;
             }
+        } else if query.len() > subsequent_nodes.len() * ANONYMIZED_DNSCRYPT_OVERHEAD {
+            raw_query_offset += subsequent_nodes.len() * ANONYMIZED_DNSCRYPT_OVERHEAD;
         } else {
-            if query.len() > subsequent_nodes.len() * ANONYMIZED_DNSCRYPT_OVERHEAD {
-                raw_query_offset += subsequent_nodes.len() * ANONYMIZED_DNSCRYPT_OVERHEAD;
-            } else {
-                error!("[FORK!] Unexpected size of query for multihop relays (version 2)");
-                return false;
-            }
+            error!("[FORK!] Unexpected size of query for multihop relays (version 2)");
+            return false;
         }
     }
     //////
