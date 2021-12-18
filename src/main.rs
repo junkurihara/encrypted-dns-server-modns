@@ -359,7 +359,7 @@ async fn tcp_acceptor(globals: Arc<Globals>, tcp_listener: TcpListener) -> Resul
             let _count = concurrent_connections.fetch_sub(1, Ordering::Relaxed);
             #[cfg(feature = "metrics")]
             varz.inflight_tcp_queries.set(_count.saturating_sub(1) as _);
-            debug!("[FORK!] {}", &parse_error(x)); // TODO: for debug
+            debug!("[FORK!] tcp: {}", &parse_error(x)); // TODO: for debug
         }));
     }
     Ok(())
@@ -414,7 +414,7 @@ async fn udp_acceptor(
             let _count = concurrent_connections.fetch_sub(1, Ordering::Relaxed);
             #[cfg(feature = "metrics")]
             varz.inflight_udp_queries.set(_count.saturating_sub(1) as _);
-            debug!("[FORK!] {}", &parse_error(x)); // TODO: for debug
+            debug!("[FORK!] udp: {}", &parse_error(x)); // TODO: for debug
         }));
     }
 }

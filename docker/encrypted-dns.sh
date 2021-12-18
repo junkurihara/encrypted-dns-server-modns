@@ -73,7 +73,7 @@ service cron start
 
 # run server
 if [ $DEBUG ]; then
-  RUST_LOG=debug exec /opt/encrypted-dns/sbin/encrypted-dns --config "$CONFIG_FILE" | tee $LOG_FILE
+  RUST_LOG=trace exec /opt/encrypted-dns/sbin/encrypted-dns --config "$CONFIG_FILE" | tee $LOG_FILE
 else
   RUST_LOG=info exec /opt/encrypted-dns/sbin/encrypted-dns --config "$CONFIG_FILE" | tee $LOG_FILE
 fi
