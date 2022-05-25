@@ -1,14 +1,15 @@
-use crate::errors::*;
-use crate::*;
-
-use byteorder::{BigEndian, ByteOrder};
-use ipext::IpExt;
-use siphasher::sip128::Hasher128;
 use std::collections::HashSet;
 use std::hash::Hasher;
 use std::net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr, SocketAddrV4, SocketAddrV6};
 use std::sync::Arc;
+
+use byteorder::{BigEndian, ByteOrder};
+use ipext::IpExt;
+use siphasher::sip128::Hasher128;
 use tokio::net::UdpSocket;
+
+use crate::errors::*;
+use crate::*;
 
 pub const ANONYMIZED_DNSCRYPT_V1_QUERY_MAGIC: [u8; 10] =
     [0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0x00, 0x00];
