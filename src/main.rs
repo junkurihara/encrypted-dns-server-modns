@@ -371,12 +371,9 @@ async fn tcp_acceptor(globals: Arc<Globals>, tcp_listener: TcpListener) -> Resul
             let _count = concurrent_connections.fetch_sub(1, Ordering::Relaxed);
             #[cfg(feature = "metrics")]
             varz.inflight_tcp_queries.set(_count.saturating_sub(1) as _);
-<<<<<<< HEAD
             debug!("[FORK!] tcp: {}", &parse_error(x)); // TODO: for debug
-=======
             let mut active_connections = active_connections.lock();
             _ = active_connections.remove(tx_channel_index);
->>>>>>> upstream/master
         }));
     }
 }
