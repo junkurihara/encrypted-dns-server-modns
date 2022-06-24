@@ -428,12 +428,9 @@ async fn udp_acceptor(
             let _count = concurrent_connections.fetch_sub(1, Ordering::Relaxed);
             #[cfg(feature = "metrics")]
             varz.inflight_udp_queries.set(_count.saturating_sub(1) as _);
-<<<<<<< HEAD
             debug!("[FORK!] udp: {}", &parse_error(x)); // TODO: for debug
-=======
             let mut active_connections = active_connections.lock();
             _ = active_connections.remove(tx_channel_index);
->>>>>>> upstream/master
         }));
     }
 }
