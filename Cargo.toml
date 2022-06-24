@@ -1,6 +1,6 @@
 [package]
 name = "encrypted-dns-modns"
-version = "0.9.3"
+version = "0.9.5"
 authors = [
   "Frank Denis <github@pureftpd.org> (Original)",
   "Jun Kurihara (Forked version)",
@@ -15,10 +15,10 @@ categories = ["asynchronous", "network-programming", "command-line-utilities"]
 readme = "README.md"
 
 [dependencies]
-anyhow = "1.0.57"
+anyhow = "1.0.58"
 byteorder = "1.4.3"
 chrono = "0.4.19"
-clap = { version = "3.1.18", default-features = false, features = [
+clap = { version = "3.2.6", default-features = false, features = [
   "std",
   "cargo",
   "wrap_help",
@@ -43,11 +43,13 @@ mimalloc = { version = "0.1.29", default-features = false }
 socket2 = "0.4.4"
 parking_lot = "0.12.1"
 rand = "0.8.5"
+rlimit = "0.8.3"
 rustc-hash = "1.1.0"
 serde = "1.0.137"
 serde_derive = "1.0.137"
 serde-big-array = "0.4.1"
 siphasher = "0.3.10"
+slabigator = "0.1.1"
 tokio = { version = "1.19.2", features = [
   "net",
   "io-std",
@@ -64,8 +66,10 @@ privdrop = "0.5.2"
 
 [dependencies.prometheus]
 optional = true
+package = "prometheus-32bitfix"
 version = "0.13.1"
 default_features = false
+features = ["process"]
 
 [features]
 default = ["metrics"]
