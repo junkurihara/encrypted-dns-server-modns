@@ -1,6 +1,6 @@
 [package]
 name = "encrypted-dns-modns"
-version = "0.9.5"
+version = "0.9.7"
 authors = [
   "Frank Denis <github@pureftpd.org> (Original)",
   "Jun Kurihara (Forked version)",
@@ -18,7 +18,7 @@ readme = "README.md"
 anyhow = "1.0.58"
 byteorder = "1.4.3"
 chrono = "0.4.19"
-clap = { version = "3.2.6", default-features = false, features = [
+clap = { version = "3.2.11", default-features = false, features = [
   "std",
   "cargo",
   "wrap_help",
@@ -32,7 +32,7 @@ env_logger = { version = "0.9.0", default-features = false, features = [
   "humantime",
 ] }
 futures = { version = "0.3.21", features = ["async-await"] }
-hyper = { version = "0.14.19", default_features = false, features = [
+hyper = { version = "0.14.20", default_features = false, features = [
   "server",
   "http1",
 ], optional = true }
@@ -45,23 +45,22 @@ parking_lot = "0.12.1"
 rand = "0.8.5"
 rlimit = "0.8.3"
 rustc-hash = "1.1.0"
-serde = "1.0.137"
-serde_derive = "1.0.137"
+serde = "1.0.139"
+serde_derive = "1.0.139"
 serde-big-array = "0.4.1"
 siphasher = "0.3.10"
-slabigator = "0.1.1"
-tokio = { version = "1.19.2", features = [
+slabigator = "0.1.4"
+tokio = { version = "1.20.0", features = [
   "net",
   "io-std",
   "io-util",
   "fs",
   "time",
-  "rt-multi-thread",
-  "parking_lot",
+  "rt-multi-thread"
 ] }
 toml = "0.5.9"
 
-[target.'cfg(not(target_family = "windows"))'.dependencies]
+[target.'cfg(target_family = "unix")'.dependencies]
 privdrop = "0.5.2"
 
 [dependencies.prometheus]

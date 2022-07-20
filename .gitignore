@@ -1,7 +1,6 @@
 **/*.rs.bk
 *~
 /target/
-Cargo.lock
 encrypted-dns.state
 encrypted-dns.toml
 
