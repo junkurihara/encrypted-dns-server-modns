@@ -60,6 +60,7 @@ use dnscrypt::*;
 use dnscrypt_certs::*;
 use dnsstamps::{InformalProperty, WithInformalProperty};
 use errors::*;
+use future::Either;
 use futures::join;
 use futures::prelude::*;
 use globals::*;
@@ -366,14 +367,19 @@ async fn tcp_acceptor(globals: Arc<Globals>, tcp_listener: TcpListener) -> Resul
         };
         let fut_abort = rx;
         let fut_all = tokio::time::timeout(timeout, future::select(fut.boxed(), fut_abort));
-        // runtime_handle.spawn(fut_all.map(move |_| {
-        runtime_handle.spawn(fut_all.map(move |x| {
+        runtime_handle.spawn(fut_all.map(move |either| {
             let _count = concurrent_connections.fetch_sub(1, Ordering::Relaxed);
             #[cfg(feature = "metrics")]
             varz.inflight_tcp_queries.set(_count.saturating_sub(1) as _);
             debug!("[FORK!] tcp: {}", &parse_error(x)); // TODO: for debug
-            let mut active_connections = active_connections.lock();
-            _ = active_connections.remove(tx_channel_index);
+
+            if let Ok(Either::Right(_)) = either {
+                // Removing the active connection was already done during
+                // cancellation.
+            } else {
+                let mut active_connections = active_connections.lock();
+                _ = active_connections.remove(tx_channel_index);
+            }
         }));
     }
 }
@@ -423,14 +429,19 @@ async fn udp_acceptor(
         let fut = handle_client_query(globals, client_ctx, packet);
         let fut_abort = rx;
         let fut_all = tokio::time::timeout(timeout, future::select(fut.boxed(), fut_abort));
-        // runtime_handle.spawn(fut_all.map(move |_| {
-        runtime_handle.spawn(fut_all.map(move |x| {
+        runtime_handle.spawn(fut_all.map(move |either| {
             let _count = concurrent_connections.fetch_sub(1, Ordering::Relaxed);
             #[cfg(feature = "metrics")]
             varz.inflight_udp_queries.set(_count.saturating_sub(1) as _);
             debug!("[FORK!] udp: {}", &parse_error(x)); // TODO: for debug
-            let mut active_connections = active_connections.lock();
-            _ = active_connections.remove(tx_channel_index);
+
+            if let Ok(Either::Right(_)) = either {
+                // Removing the active connection was already done during
+                // cancellation.
+            } else {
+                let mut active_connections = active_connections.lock();
+                _ = active_connections.remove(tx_channel_index);
+            }
         }));
     }
 }
