@@ -371,7 +371,6 @@ async fn tcp_acceptor(globals: Arc<Globals>, tcp_listener: TcpListener) -> Resul
             let _count = concurrent_connections.fetch_sub(1, Ordering::Relaxed);
             #[cfg(feature = "metrics")]
             varz.inflight_tcp_queries.set(_count.saturating_sub(1) as _);
-            debug!("[FORK!] tcp: {}", &parse_error(either)); // TODO: for debug
 
             if let Ok(Either::Right(_)) = either {
                 // Removing the active connection was already done during
@@ -433,7 +432,6 @@ async fn udp_acceptor(
             let _count = concurrent_connections.fetch_sub(1, Ordering::Relaxed);
             #[cfg(feature = "metrics")]
             varz.inflight_udp_queries.set(_count.saturating_sub(1) as _);
-            debug!("[FORK!] udp: {}", &parse_error(either)); // TODO: for debug
 
             if let Ok(Either::Right(_)) = either {
                 // Removing the active connection was already done during
